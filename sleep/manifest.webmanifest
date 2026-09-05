@@ -1,0 +1,19 @@
+{
+  "name": "Sleep Cycle Web - 睡眠記録とスマートアラーム",
+  "short_name": "Sleep",
+  "description": "マイクと加速度センサーで睡眠を記録し、浅い眠りのタイミングで起こすスマートアラーム付きの睡眠アプリ。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#080c18",
+  "theme_color": "#0b1020",
+  "categories": ["health", "lifestyle", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}
