@@ -3,3 +3,16 @@ h1 {
   padding-bottom: 8px;
   border-bottom: 1px solid #ddd;
 }
+h2 {
+  font-size: 18px;
+  margin-top: 32px;
+}
+
+ul {
+  padding-left: 20px;
+}
+
+li {
+  margin-bottom: 8px;
+  line-height: 1.6;
+}

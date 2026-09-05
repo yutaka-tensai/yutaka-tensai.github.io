@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<title>Sleep Cycle Web - スマートアラームと睡眠分析</title>
+<meta name="description" content="マイクと加速度センサーで睡眠を記録し、浅い眠りのタイミングで起こすスマートアラーム付きの睡眠アプリ。">
+<meta name="theme-color" content="#0b1020">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Sleep">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ========================= ホーム ========================= -->
+  <section class="view" id="view-home">
+    <header class="app-header">
+      <div>
+        <h1>おやすみなさい</h1>
+        <p class="sub" id="home-date"></p>
+      </div>
+      <button class="icon-btn" id="btn-help" aria-label="使い方">?</button>
+    </header>
+
+    <div class="card alarm-card">
+      <div class="row between">
+        <span class="label">アラーム</span>
+        <label class="switch">
+          <input type="checkbox" id="alarm-enabled" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="alarm-time-wrap">
+        <input type="time" id="alarm-time" value="07:00">
+      </div>
+      <p class="hint" id="alarm-hint"></p>
+
+      <div class="field">
+        <span class="label">スマート起床の幅</span>
+        <div class="chips" id="window-chips">
+          <button class="chip" data-v="0">なし</button>
+          <button class="chip" data-v="10">10分</button>
+          <button class="chip" data-v="20">20分</button>
+          <button class="chip" data-v="30">30分</button>
+          <button class="chip" data-v="45">45分</button>
+          <button class="chip" data-v="60">60分</button>
+        </div>
+        <p class="hint">設定時刻までの間で、眠りが浅くなった瞬間に起こします。</p>
+      </div>
+
+      <div class="field row between">
+        <span class="label">アラーム音</span>
+        <div class="row gap8">
+          <select id="melody"></select>
+          <button class="mini-btn" id="btn-preview-melody">試聴</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row between">
+        <span class="label">入眠サウンド</span>
+        <div class="row gap8">
+          <select id="aid-sound"></select>
+          <button class="mini-btn" id="btn-aid-toggle">再生</button>
+        </div>
+      </div>
+      <div class="field row between">
+        <span class="label small">フェードアウト</span>
+        <select id="aid-fade">
+          <option value="0">なし</option>
+          <option value="10">10分</option>
+          <option value="20">20分</option>
+          <option value="30">30分</option>
+          <option value="60">60分</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="label">睡眠メモ</span>
+      <p class="hint">今日あったことを記録すると、睡眠の質との関係が統計に出ます。</p>
+      <div class="chips wrap" id="note-chips"></div>
+    </div>
+
+    <div class="card sensor-card">
+      <div class="row between">
+        <span class="label">センサー</span>
+        <select id="sensor">
+          <option value="both">マイク + 加速度</option>
+          <option value="mic">マイクのみ</option>
+          <option value="motion">加速度のみ</option>
+        </select>
+      </div>
+      <p class="hint">枕元の平らな場所に、画面を上にして置いてください。充電しながらの使用を推奨します。</p>
+    </div>
+
+    <button class="primary-btn" id="btn-start">眠りを記録する</button>
+
+    <div id="home-last"></div>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ========================= 統計 ========================= -->
+  <section class="view" id="view-stats" hidden>
+    <header class="app-header"><h1>統計</h1></header>
+    <div class="range-tabs" id="range-tabs">
+      <button class="range-tab" data-v="7">7日</button>
+      <button class="range-tab" data-v="30">30日</button>
+      <button class="range-tab" data-v="90">90日</button>
+    </div>
+    <div id="stats-body"></div>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ========================= 履歴 ========================= -->
+  <section class="view" id="view-history" hidden>
+    <header class="app-header"><h1>履歴</h1></header>
+    <div id="history-list"></div>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ========================= 設定 ========================= -->
+  <section class="view" id="view-settings" hidden>
+    <header class="app-header"><h1>設定</h1></header>
+
+    <div class="card">
+      <div class="field row between">
+        <span class="label">目標睡眠時間</span>
+        <select id="goal-min">
+          <option value="360">6時間</option>
+          <option value="420">7時間</option>
+          <option value="450">7時間30分</option>
+          <option value="480">8時間</option>
+          <option value="510">8時間30分</option>
+          <option value="540">9時間</option>
+        </select>
+      </div>
+      <div class="field row between">
+        <span class="label">徐々に音量を上げる</span>
+        <label class="switch"><input type="checkbox" id="set-gradual"><span class="slider"></span></label>
+      </div>
+      <div class="field row between">
+        <span class="label">バイブレーション</span>
+        <label class="switch"><input type="checkbox" id="set-vibrate"><span class="slider"></span></label>
+      </div>
+      <div class="field row between">
+        <span class="label">スヌーズ</span>
+        <label class="switch"><input type="checkbox" id="set-snooze"><span class="slider"></span></label>
+      </div>
+      <div class="field row between">
+        <span class="label small">インテリジェントスヌーズ<br><span class="hint">押すたびに間隔が半分になります</span></span>
+        <label class="switch"><input type="checkbox" id="set-snooze-smart"><span class="slider"></span></label>
+      </div>
+      <div class="field row between">
+        <span class="label">いびき・寝言の録音</span>
+        <label class="switch"><input type="checkbox" id="set-record"><span class="slider"></span></label>
+      </div>
+      <div class="field row between">
+        <span class="label">記録中に画面を暗くする</span>
+        <label class="switch"><input type="checkbox" id="set-dim"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="label">データ</span>
+      <div class="btn-row">
+        <button class="mini-btn" id="btn-export">エクスポート</button>
+        <button class="mini-btn" id="btn-import">インポート</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </div>
+      <div class="btn-row">
+        <button class="mini-btn" id="btn-sample">サンプルデータを追加</button>
+        <button class="mini-btn danger" id="btn-clear">全データを削除</button>
+      </div>
+      <p class="hint">データはこの端末のブラウザ内にのみ保存されます。サーバーには何も送信しません。</p>
+    </div>
+
+    <div class="card">
+      <span class="label">この Web アプリについて</span>
+      <p class="hint" id="about-text"></p>
+    </div>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ========================= 記録詳細 ========================= -->
+  <section class="view" id="view-detail" hidden>
+    <header class="app-header">
+      <button class="icon-btn" id="btn-detail-back" aria-label="戻る">‹</button>
+      <h1 id="detail-title">記録</h1>
+      <button class="icon-btn danger" id="btn-detail-delete" aria-label="削除">🗑</button>
+    </header>
+    <div id="detail-body"></div>
+    <div class="spacer"></div>
+  </section>
+
+  <!-- ========================= タブバー ========================= -->
+  <nav id="tabbar">
+    <button class="tab" data-view="home"><span>🌙</span>ホーム</button>
+    <button class="tab" data-view="stats"><span>📊</span>統計</button>
+    <button class="tab" data-view="history"><span>🗓</span>履歴</button>
+    <button class="tab" data-view="settings"><span>⚙️</span>設定</button>
+  </nav>
+</div>
+
+<!-- ========================= 記録中（全画面） ========================= -->
+<div id="night" hidden>
+  <div class="night-inner">
+    <div class="night-top">
+      <span id="night-status">記録中</span>
+      <span id="night-sensors"></span>
+    </div>
+    <div class="night-clock" id="night-clock">--:--</div>
+    <div class="night-alarm" id="night-alarm"></div>
+    <canvas id="night-canvas"></canvas>
+    <div class="night-meta">
+      <div><b id="night-elapsed">0分</b><span>経過</span></div>
+      <div><b id="night-depth">-</b><span>いまの状態</span></div>
+      <div><b id="night-snore">0分</b><span>いびき</span></div>
+    </div>
+    <div class="night-actions">
+      <button class="ghost-btn" id="btn-night-sound">サウンド</button>
+      <button class="ghost-btn" id="btn-night-dim">明るさ</button>
+      <button class="ghost-btn danger" id="btn-night-stop">長押しで停止</button>
+    </div>
+    <p class="night-hint">画面を消さずに、このまま置いておいてください。</p>
+  </div>
+</div>
+
+<!-- ========================= アラーム鳴動 ========================= -->
+<div id="ringing" hidden>
+  <div class="ring-inner">
+    <div class="sun"></div>
+    <div class="ring-clock" id="ring-clock">--:--</div>
+    <p id="ring-msg">おはようございます</p>
+    <button class="primary-btn" id="btn-ring-stop">起きる</button>
+    <button class="ghost-btn" id="btn-ring-snooze">スヌーズ</button>
+  </div>
+</div>
+
+<!-- ========================= 起床後のまとめ ========================= -->
+<div id="morning" hidden>
+  <div class="morning-inner">
+    <header class="app-header"><h1>今朝のまとめ</h1></header>
+    <div id="morning-body"></div>
+    <div class="card">
+      <span class="label">目覚めの気分は？</span>
+      <div class="moods" id="mood-picker">
+        <button data-v="1">😫</button>
+        <button data-v="2">😕</button>
+        <button data-v="3">😐</button>
+        <button data-v="4">🙂</button>
+        <button data-v="5">😄</button>
+      </div>
+    </div>
+    <button class="primary-btn" id="btn-morning-done">完了</button>
+    <div class="spacer"></div>
+  </div>
+</div>
+
+<!-- ========================= 使い方 ========================= -->
+<div id="help" hidden>
+  <div class="help-inner">
+    <header class="app-header">
+      <h1>使い方</h1>
+      <button class="icon-btn" id="btn-help-close">×</button>
+    </header>
+    <div class="card">
+      <h3>1. アラームを設定する</h3>
+      <p>起きたい時刻と「スマート起床の幅」を決めます。30分に設定すると、6:30〜7:00 の間で眠りが浅くなった瞬間にアラームが鳴ります。</p>
+      <h3>2. 端末を枕元に置く</h3>
+      <p>マットレスの上、または枕の横の平らな場所に画面を上にして置いてください。マイクの寝返り音と加速度センサーの振動から睡眠の深さを推定します。</p>
+      <h3>3. そのまま眠る</h3>
+      <p>画面は自動で暗くなります。<b>アプリを閉じたり画面をロックしたりしないでください。</b>ブラウザはバックグラウンドで動き続けられないため、記録もアラームも止まってしまいます。充電しながらのご使用をおすすめします。</p>
+      <h3>ネイティブアプリとの違い</h3>
+      <p>Web アプリのため、画面消灯中の動作・OS のアラーム権限・ヘルスケア連携・Apple Watch 連携はできません。それ以外の機能（睡眠グラフ、スマートアラーム、いびき録音、統計、入眠サウンド）は動作します。</p>
+      <h3>プライバシー</h3>
+      <p>音声も睡眠データもすべて端末内で処理・保存され、外部に送信されることはありません。</p>
+    </div>
+    <div class="spacer"></div>
+  </div>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
