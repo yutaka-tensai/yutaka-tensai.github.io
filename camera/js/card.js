@@ -65,8 +65,40 @@
     return ITEMS.filter(function (item) {
       return item.group === group && state.show[item.key] && fields[item.key];
     }).map(function (item) {
-      return fields[item.key];
-    });
+      return item.key === 'lens' ? lensLabel(fields[item.key]) : fields[item.key];
+    }).filter(Boolean);
+  }
+
+  // "iPhone 15 Pro back camera 6.86mm f/1.78" のように、レンズ名の末尾に
+  // 焦点距離と F値が入っている機種がある。撮影設定の行と二重になるため、
+  // そちらに出している項目だけをレンズ名から取り除く。
+  //
+  // ただし "FE 35mm F1.8" のように mm と F値が製品名そのものである場合は削らない。
+  // 見分けは、スマートフォンの実焦点距離が小数になること（6.86mm）と、
+  // 名前に camera が入ることで行う。
+  var LENS_SPEC_RE = /\s*(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?\s*mm)?\s*(?:f\/|F)\s*(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*$/i;
+
+  function lensLabel(lens) {
+    var match = lens.match(LENS_SPEC_RE);
+    if (!match) return lens;
+
+    var focal = match[1] || '';
+    var isModuleName = focal.indexOf('.') >= 0 || /camera/i.test(lens);
+    if (!isModuleName) return lens;
+
+    var dropFocal = !!focal && (state.show.focal || state.show.focal35);
+    var dropAperture = state.show.fNumber;
+    if (!dropFocal && !dropAperture) return lens;
+
+    // 仕様表記を除いた部分だけで名前として成り立つかを見る
+    var base = lens.slice(0, match.index).trim();
+    var words = base.split(/\s+/).filter(Boolean);
+    if (words.length < 2 || base.length < 6) return lens;
+
+    var trimmed = base;
+    if (!dropFocal && focal) trimmed += ' ' + focal;   // F値だけ消す
+    if (!dropAperture) trimmed += ' F' + match[2];     // 焦点距離だけ消す
+    return trimmed.trim();
   }
 
   var el = {};
@@ -417,5 +449,5 @@
     init();
   }
 
-  global.PhotoCard = { open: open };
+  global.PhotoCard = { open: open, lensLabel: lensLabel };
 })(window);
