@@ -2,7 +2,7 @@
  * app.js - 写真の EXIF を集計してダッシュボードを描画する
  * 画像はすべてブラウザ内で処理し、どこにも送信しない。
  */
-(function () {
+(function (global) {
   'use strict';
 
   var IMAGE_RE = /\.(jpe?g|tiff?|heic|heif|webp|png|dng|arw|cr2|cr3|nef|raf|orf|rw2)$/i;
@@ -295,6 +295,29 @@
     Charts.columns($('chartMonth'), monthItems(records), { emptyText: '撮影日時の記録がありません', dense: true });
   }
 
+  /* フォトカードに渡す表示用データを作る */
+  function cardDataFor(record) {
+    var specs = [];
+    if (focalOf(record)) specs.push(formatFocal(focalOf(record)));
+    if (record.fNumber) specs.push(formatF(record.fNumber));
+    if (record.exposureTime) {
+      // カードでは 1/125s / 2.5s のように単位まで入れて読みやすくする
+      specs.push(record.exposureTime >= 1
+        ? (Math.round(record.exposureTime * 10) / 10) + 's'
+        : '1/' + Math.round(1 / record.exposureTime) + 's');
+    }
+    if (record.iso) specs.push('ISO ' + record.iso);
+    return {
+      name: record.name,
+      imageUrl: record.thumbUrl,
+      camera: record.camera,
+      lens: record.lens,
+      specs: specs,
+      dateText: record.dateTime ? formatDate(record.dateTime).slice(0, 10) : '',
+      lowRes: !!record.lowRes
+    };
+  }
+
   var SORT_ACCESSORS = {
     name: function (r) { return r.name.toLowerCase(); },
     camera: function (r) { return (r.camera || '').toLowerCase(); },
@@ -328,17 +351,19 @@
       var thumbCell = document.createElement('td');
       thumbCell.className = 'cell-thumb';
       if (record.thumbUrl && index < MAX_THUMBS) {
-        var link = document.createElement('a');
-        link.href = record.thumbUrl;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.title = 'クリックで拡大';
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'thumb-btn';
+        button.title = 'クリックでフォトカードを作成';
         var img = document.createElement('img');
         img.src = record.thumbUrl;
         img.alt = '';
         img.loading = 'lazy';
-        link.appendChild(img);
-        thumbCell.appendChild(link);
+        button.appendChild(img);
+        button.addEventListener('click', function () {
+          if (global.PhotoCard) global.PhotoCard.open(cardDataFor(record));
+        });
+        thumbCell.appendChild(button);
       } else if (record.noPreview) {
         var badge = document.createElement('span');
         badge.className = 'thumb-none';
@@ -508,6 +533,8 @@
             record.thumbUrl = makeThumb(file, exif);
             record.thumbnail = null; // バイト列は URL 化したので保持しない
             record.noPreview = !record.thumbUrl;
+            // カード作成では元ファイルをそのまま描画する。埋め込みサムネイル頼みのときは低解像度
+            record.lowRes = !!record.thumbUrl && !isRenderable(file);
             state.records.push(record);
             done++;
             setProgress(done, files.length);
@@ -709,4 +736,4 @@
   } else {
     init();
   }
-})();
+})(window);
