@@ -26,17 +26,48 @@
     serif: { label: '欧文セリフ', stack: 'Georgia, "Times New Roman", "Yu Mincho", serif' }
   };
 
+  /*
+   * カードに載せられる項目。
+   * line: 見出し行 / spec: 撮影設定の行 / meta: 右下に小さく出す情報
+   */
+  var ITEMS = [
+    { key: 'camera', label: 'カメラ名', group: 'line', on: true },
+    { key: 'lens', label: 'レンズ名', group: 'line', on: true },
+    { key: 'fileName', label: 'ファイル名', group: 'line', on: false },
+    { key: 'focal', label: '焦点距離', group: 'spec', on: true },
+    { key: 'focal35', label: '35mm換算', group: 'spec', on: false },
+    { key: 'fNumber', label: 'F値', group: 'spec', on: true },
+    { key: 'shutter', label: 'シャッター速度', group: 'spec', on: true },
+    { key: 'iso', label: 'ISO感度', group: 'spec', on: true },
+    { key: 'ev', label: '露出補正', group: 'spec', on: false },
+    { key: 'mode', label: '撮影モード', group: 'spec', on: false },
+    { key: 'date', label: '撮影日', group: 'meta', on: true },
+    { key: 'time', label: '撮影時刻', group: 'meta', on: false }
+  ];
+
   var state = {
     data: null,
     image: null,
+    previewUrl: null,
     orientation: 'portrait',
     theme: 'white',
     font: 'gothic',
     accent: null,
     title: '',
-    showLens: true,
-    showDate: true
+    show: {}
   };
+
+  ITEMS.forEach(function (item) { state.show[item.key] = item.on; });
+
+  /* 選択されていて、かつ値がある項目だけを取り出す */
+  function pick(group) {
+    var fields = (state.data && state.data.fields) || {};
+    return ITEMS.filter(function (item) {
+      return item.group === group && state.show[item.key] && fields[item.key];
+    }).map(function (item) {
+      return fields[item.key];
+    });
+  }
 
   var el = {};
 
@@ -74,36 +105,47 @@
     var ctx = canvas.getContext('2d');
     var t = theme();
     var W = size.w, H = size.h;
-    var data = state.data || {};
 
     ctx.fillStyle = t.bg;
     ctx.fillRect(0, 0, W, H);
 
     var pad = Math.round(W * 0.052);
     var titleSize = W * 0.036;
-    var camSize = W * 0.030;
-    var lensSize = W * 0.023;
+    var headSize = W * 0.030;
+    var subSize = W * 0.023;
     var specSize = W * 0.026;
     var gap = W * 0.016;
+    var photoGap = gap * 1.6;
 
     var title = state.title.trim();
-    var lens = state.showLens && data.lens ? data.lens : '';
+    var lines = pick('line');          // カメラ名・レンズ名・ファイル名
+    var meta = pick('meta').join(' '); // 撮影日・時刻
+
+    var head = lines.length ? lines[0] : '';
+    var subs = lines.slice(1);
+
+    // 撮影設定は項目が多いと1行に入りきらないので、必要なら2行に折り返す
+    ctx.font = font(specSize * 0.8);
+    var metaW = meta ? ctx.measureText(meta).width + gap : 0;
+    var specLines = wrapSpecs(ctx, pick('spec'), specSize, W - pad * 2 - metaW);
 
     // 情報エリアの高さを先に見積もり、残りを写真に割り当てる
-    var infoH = camSize * 1.25 + gap * 1.5 + specSize * 1.5;
+    var infoH = 0;
     if (title) infoH += titleSize * 1.35;
-    if (lens) infoH += lensSize * 1.5;
+    if (head) infoH += headSize * 1.25;
+    infoH += subs.length * subSize * 1.5;
+    if (specLines.length || meta) {
+      infoH += gap * 1.5 + specSize * 1.5 * Math.max(1, specLines.length);
+    }
 
     var boxW = W - pad * 2;
-    var boxH = H - pad * 2 - infoH - gap;
+    var boxH = H - pad * 2 - infoH - (infoH ? photoGap : 0);
 
-    // 写真は切り抜かず全体を収める。写真＋情報のまとまりを上下中央に置くことで、
-    // カードの向きと写真の向きが違っても余白が偏らないようにする。
+    // 写真は切り抜かず全体を収め、写真＋情報のまとまりを上下中央に置く
     var drawnH = 0;
-    var top = pad;
-    var left = pad;          // 情報エリアは写真の左端にそろえる
+    var left = pad;
     var textW = boxW;
-    var photoGap = gap * 1.6;
+    var top = pad;
     if (state.image) {
       var iw = state.image.naturalWidth || state.image.width;
       var ih = state.image.naturalHeight || state.image.height;
@@ -116,7 +158,7 @@
       ctx.drawImage(state.image, left, top, dw, drawnH);
     }
 
-    var y = top + drawnH + photoGap;
+    var y = top + drawnH + (infoH ? photoGap : 0);
 
     ctx.textBaseline = 'top';
     ctx.textAlign = 'left';
@@ -128,17 +170,21 @@
       y += titleSize * 1.35;
     }
 
-    ctx.fillStyle = t.text;
-    ctx.font = font(camSize, '600');
-    ctx.fillText(ellipsize(ctx, data.camera || 'カメラ情報なし', textW), left, y);
-    y += camSize * 1.25;
-
-    if (lens) {
-      ctx.fillStyle = t.dim;
-      ctx.font = font(lensSize);
-      ctx.fillText(ellipsize(ctx, lens, textW), left, y);
-      y += lensSize * 1.5;
+    if (head) {
+      ctx.fillStyle = t.text;
+      ctx.font = font(headSize, '600');
+      ctx.fillText(ellipsize(ctx, head, textW), left, y);
+      y += headSize * 1.25;
     }
+
+    ctx.fillStyle = t.dim;
+    ctx.font = font(subSize);
+    subs.forEach(function (line) {
+      ctx.fillText(ellipsize(ctx, line, textW), left, y);
+      y += subSize * 1.5;
+    });
+
+    if (!specLines.length && !meta) return;
 
     y += gap * 0.5;
 
@@ -147,29 +193,43 @@
     ctx.fillRect(left, Math.round(y), Math.round(W * 0.07), Math.max(2, Math.round(W * 0.003)));
     y += gap;
 
-    // 撮影設定（長い場合は文字を少し詰める）
-    var specs = (data.specs || []).join('   ');
-    var specFontSize = specSize;
-    ctx.font = font(specFontSize, '500');
-    var dateText = state.showDate && data.dateText ? data.dateText : '';
-    ctx.font = font(specSize * 0.8);
-    var dateW = dateText ? ctx.measureText(dateText).width + gap : 0;
-    while (specFontSize > specSize * 0.6) {
-      ctx.font = font(specFontSize, '500');
-      if (ctx.measureText(specs).width <= textW - dateW) break;
-      specFontSize -= 1;
-    }
+    // 撮影設定（日付は最終行の右端にそろえる）
+    var metaSize = specSize * 0.8;
     ctx.fillStyle = t.text;
-    ctx.font = font(specFontSize, '500');
-    ctx.fillText(ellipsize(ctx, specs, textW - dateW), left, y);
+    ctx.font = font(specSize, '500');
+    var lastY = y;
+    specLines.forEach(function (line, index) {
+      lastY = y + index * specSize * 1.5;
+      var width = index === specLines.length - 1 ? textW - metaW : textW;
+      ctx.fillText(ellipsize(ctx, line, width), left, lastY);
+    });
 
-    if (dateText) {
+    if (meta) {
       ctx.fillStyle = t.dim;
-      ctx.font = font(specSize * 0.8);
+      ctx.font = font(metaSize);
       ctx.textAlign = 'right';
-      ctx.fillText(dateText, left + textW, y + (specFontSize - specSize * 0.8) * 0.6);
+      ctx.fillText(meta, left + textW, lastY + (specSize - metaSize) * 0.6);
       ctx.textAlign = 'left';
     }
+  }
+
+  /* 撮影設定を1行に収める。入らなければ2行に分ける。 */
+  function wrapSpecs(ctx, items, size, maxWidth) {
+    if (!items.length) return [];
+    var separator = '   ';
+    ctx.font = font(size, '500');
+    var single = items.join(separator);
+    if (ctx.measureText(single).width <= maxWidth || items.length < 2) return [single];
+
+    // 2行の幅ができるだけ均等になる位置で分ける
+    var best = null;
+    for (var i = 1; i < items.length; i++) {
+      var a = items.slice(0, i).join(separator);
+      var b = items.slice(i).join(separator);
+      var diff = Math.abs(ctx.measureText(a).width - ctx.measureText(b).width);
+      if (!best || diff < best.diff) best = { diff: diff, lines: [a, b] };
+    }
+    return best.lines;
   }
 
   function buildOptions(container, options, current, onPick) {
@@ -192,6 +252,46 @@
     });
   }
 
+  var GROUP_LABELS = { line: '見出し', spec: '撮影設定', meta: '日時' };
+
+  function renderItems() {
+    var container = el.items;
+    container.innerHTML = '';
+    ['line', 'spec', 'meta'].forEach(function (group) {
+      var box = document.createElement('div');
+      box.className = 'item-group';
+      var head = document.createElement('span');
+      head.className = 'item-group-label';
+      head.textContent = GROUP_LABELS[group];
+      box.appendChild(head);
+
+      ITEMS.filter(function (item) { return item.group === group; }).forEach(function (item) {
+        var fields = (state.data && state.data.fields) || {};
+        var label = document.createElement('label');
+        label.className = 'toggle';
+        var input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = !!state.show[item.key];
+        input.dataset.key = item.key;
+        // 値が無い項目は選んでも出せないので、その旨を示す
+        if (!fields[item.key]) {
+          label.classList.add('is-empty');
+          label.title = 'この写真にはこの情報がありません';
+        }
+        input.addEventListener('change', function () {
+          state.show[item.key] = input.checked;
+          draw();
+        });
+        var span = document.createElement('span');
+        span.textContent = item.label;
+        label.appendChild(input);
+        label.appendChild(span);
+        box.appendChild(label);
+      });
+      container.appendChild(box);
+    });
+  }
+
   function renderControls() {
     buildOptions(el.orientation, ORIENTATIONS, state.orientation, function (key) {
       state.orientation = key; refresh();
@@ -209,6 +309,7 @@
 
   function refresh() {
     renderControls();
+    renderItems();
     draw();
   }
 
@@ -227,34 +328,51 @@
     }, 'image/png');
   }
 
+  function releasePreview() {
+    if (state.previewUrl) {
+      URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = null;
+    }
+  }
+
   function close() {
     el.modal.hidden = true;
     state.image = null;
+    releasePreview();
     document.body.classList.remove('is-locked');
   }
 
   function open(data) {
     state.data = data;
     state.title = '';
+    state.image = null;
     el.title.value = '';
-    el.note.hidden = !data.lowRes;
+    el.note.hidden = true;
     el.modal.hidden = false;
     document.body.classList.add('is-locked');
-
-    var image = new Image();
-    image.onload = function () {
-      state.image = image;
-      // 写真の向きに合わせてカードの向きを初期選択する
-      var ratio = image.naturalWidth / image.naturalHeight;
-      state.orientation = ratio > 1.1 ? 'landscape' : (ratio < 0.95 ? 'portrait' : 'square');
-      refresh();
-    };
-    image.onerror = function () {
-      state.image = null;
-      refresh();
-    };
-    image.src = data.imageUrl;
     refresh();
+
+    releasePreview();
+    data.loadPreview().then(function (preview) {
+      if (!preview || !preview.url) { refresh(); return; }
+      if (preview.temporary) state.previewUrl = preview.url;
+
+      var image = new Image();
+      image.onload = function () {
+        state.image = image;
+        // 写真の向きに合わせてカードの向きを初期選択する
+        var ratio = image.naturalWidth / image.naturalHeight;
+        state.orientation = ratio > 1.1 ? 'landscape' : (ratio < 0.95 ? 'portrait' : 'square');
+        // 埋め込みプレビューは元画像より小さいので、粗くなる場合だけ注意書きを出す
+        el.note.hidden = Math.max(image.naturalWidth, image.naturalHeight) >= 1200;
+        refresh();
+      };
+      image.onerror = function () {
+        state.image = null;
+        refresh();
+      };
+      image.src = preview.url;
+    });
   }
 
   function init() {
@@ -267,6 +385,7 @@
     el.accent = $('cardAccent');
     el.title = $('cardTitle');
     el.note = $('cardNote');
+    el.items = $('cardItems');
 
     el.accent.value = THEMES[state.theme].accent;
     el.accent.addEventListener('input', function () {
@@ -280,14 +399,6 @@
     });
     el.title.addEventListener('input', function () {
       state.title = el.title.value;
-      draw();
-    });
-    $('cardShowLens').addEventListener('change', function (event) {
-      state.showLens = event.target.checked;
-      draw();
-    });
-    $('cardShowDate').addEventListener('change', function (event) {
-      state.showDate = event.target.checked;
       draw();
     });
     $('cardDownload').addEventListener('click', download);

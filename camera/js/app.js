@@ -5,7 +5,7 @@
 (function (global) {
   'use strict';
 
-  var IMAGE_RE = /\.(jpe?g|tiff?|heic|heif|webp|png|dng|arw|cr2|cr3|nef|raf|orf|rw2)$/i;
+  var IMAGE_RE = /\.(jpe?g|tiff?|heic|heif|webp|png|avif|dng|arw|sr2|srf|cr2|cr3|crw|nef|nrw|raf|orf|rw2|raw|pef|srw|x3f|3fr|iiq)$/i;
   var MAX_THUMBS = 400;
 
   var state = {
@@ -295,26 +295,62 @@
     Charts.columns($('chartMonth'), monthItems(records), { emptyText: '撮影日時の記録がありません', dense: true });
   }
 
-  /* フォトカードに渡す表示用データを作る */
+  function formatEv(value) {
+    if (value == null) return '';
+    var rounded = Math.round(value * 10) / 10;
+    if (rounded === 0) return '±0EV';
+    return (rounded > 0 ? '+' : '') + rounded + 'EV';
+  }
+
+  /* カードに載せられる値を一通り整形して渡す（どれを使うかは card.js 側で選ぶ） */
   function cardDataFor(record) {
-    var specs = [];
-    if (focalOf(record)) specs.push(formatFocal(focalOf(record)));
-    if (record.fNumber) specs.push(formatF(record.fNumber));
+    var shutter = '';
     if (record.exposureTime) {
-      // カードでは 1/125s / 2.5s のように単位まで入れて読みやすくする
-      specs.push(record.exposureTime >= 1
+      shutter = record.exposureTime >= 1
         ? (Math.round(record.exposureTime * 10) / 10) + 's'
-        : '1/' + Math.round(1 / record.exposureTime) + 's');
+        : '1/' + Math.round(1 / record.exposureTime) + 's';
     }
-    if (record.iso) specs.push('ISO ' + record.iso);
+    var stamp = record.dateTime ? formatDate(record.dateTime) : '';
+
     return {
       name: record.name,
-      imageUrl: record.thumbUrl,
-      camera: record.camera,
-      lens: record.lens,
-      specs: specs,
-      dateText: record.dateTime ? formatDate(record.dateTime).slice(0, 10) : '',
-      lowRes: !!record.lowRes
+      fields: {
+        camera: record.camera || '',
+        lens: record.lens || '',
+        fileName: record.name,
+        focal: record.focalLength ? formatFocal(record.focalLength) : '',
+        focal35: record.focal35 ? formatFocal(record.focal35) + '(35mm換算)' : '',
+        fNumber: record.fNumber ? formatF(record.fNumber) : '',
+        shutter: shutter,
+        iso: record.iso ? 'ISO ' + record.iso : '',
+        ev: formatEv(record.exposureBias),
+        mode: record.program || '',
+        date: stamp ? stamp.slice(0, 10) : '',
+        time: stamp ? stamp.slice(11) : ''
+      },
+      loadPreview: previewLoaderFor(record)
+    };
+  }
+
+  /*
+   * カード用の画像を用意する。
+   * 表示できる形式は元ファイルをそのまま、RAW / HEIC は埋め込みプレビューを読み直して
+   * 一覧用に縮小したものではなく元の解像度で描画する。
+   */
+  function previewLoaderFor(record) {
+    return function () {
+      if (!record.embedded || !record.file || !record.thumb) {
+        return Promise.resolve({ url: record.thumbUrl, temporary: false });
+      }
+      return ExifReader.readThumbnail(record.file, record.thumb).then(function (bytes) {
+        if (!bytes) return { url: record.thumbUrl, temporary: false };
+        return {
+          url: URL.createObjectURL(new Blob([bytes], { type: 'image/jpeg' })),
+          temporary: true
+        };
+      }).catch(function () {
+        return { url: record.thumbUrl, temporary: false };
+      });
     };
   }
 
@@ -475,19 +511,45 @@
       /\.(jpe?g|png|webp|gif|avif)$/i.test(file.name);
   }
 
-  function makeThumb(file, exif) {
-    if (state.thumbUrls.length >= MAX_THUMBS) return null;
-    var blob = null;
-    if (isRenderable(file)) {
-      blob = file;
-    } else if (exif && exif.thumbnail) {
-      // HEIC や RAW でも、EXIF に JPEG サムネイルが入っていれば表示できる
-      blob = new Blob([exif.thumbnail], { type: 'image/jpeg' });
-    }
-    if (!blob) return null;
-    var url = URL.createObjectURL(blob);
+  function trackUrl(url) {
     state.thumbUrls.push(url);
     return url;
+  }
+
+  /*
+   * 一覧用のサムネイルを作る。
+   * 表示できる形式はファイル自身を参照するだけ（ディスク上のまま）。
+   * RAW / HEIC の埋め込みプレビューは数MBあるため、縮小した小さな画像に置き換えて
+   * メモリを節約する。カード作成時は元のプレビューを読み直す。
+   */
+  function buildThumb(file, exif) {
+    if (state.thumbUrls.length >= MAX_THUMBS) return Promise.resolve({ url: null });
+    if (isRenderable(file)) {
+      return Promise.resolve({ url: trackUrl(URL.createObjectURL(file)), embedded: false });
+    }
+    if (!exif || !exif.thumbnail) return Promise.resolve({ url: null });
+
+    var blob = new Blob([exif.thumbnail], { type: 'image/jpeg' });
+    return shrink(blob).then(function (small) {
+      return { url: trackUrl(URL.createObjectURL(small || blob)), embedded: true };
+    });
+  }
+
+  /* 画像を一覧表示に十分な大きさまで縮小する（失敗したら null） */
+  function shrink(blob, maxSide) {
+    if (typeof createImageBitmap !== 'function') return Promise.resolve(null);
+    return createImageBitmap(blob).then(function (bitmap) {
+      var max = maxSide || 200;
+      var scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      return new Promise(function (resolve) {
+        canvas.toBlob(function (out) { resolve(out); }, 'image/jpeg', 0.85);
+      });
+    }).catch(function () { return null; });
   }
 
   function processFiles(fileList) {
@@ -530,14 +592,19 @@
             record.hasExif = !!(exif && (exif.camera || exif.fNumber || exif.focalLength || exif.iso));
             if (!record.dateTime && file.lastModified) record.dateTime = new Date(file.lastModified);
             record.ext = (file.name.split('.').pop() || '').toUpperCase().slice(0, 5);
-            record.thumbUrl = makeThumb(file, exif);
-            record.thumbnail = null; // バイト列は URL 化したので保持しない
-            record.noPreview = !record.thumbUrl;
-            // カード作成では元ファイルをそのまま描画する。埋め込みサムネイル頼みのときは低解像度
-            record.lowRes = !!record.thumbUrl && !isRenderable(file);
-            state.records.push(record);
-            done++;
-            setProgress(done, files.length);
+            record.file = file;
+            record.thumb = exif ? exif.thumb : null;
+
+            return buildThumb(file, exif).then(function (thumb) {
+              record.thumbUrl = thumb.url;
+              record.embedded = !!thumb.embedded;
+              record.noPreview = !thumb.url;
+              record.thumbnail = null; // バイト列は URL 化したので保持しない
+              if (exif) exif.thumbnail = null;
+              state.records.push(record);
+              done++;
+              setProgress(done, files.length);
+            });
           });
       })).then(function () {
         render();
