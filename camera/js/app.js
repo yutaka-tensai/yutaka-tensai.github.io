@@ -735,8 +735,18 @@
     render();
   }
 
+  /* ホーム画面から起動していない場合だけ、追加方法の案内を出す */
+  function showInstallHint() {
+    var hint = $('installHint');
+    if (!hint) return;
+    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      window.navigator.standalone === true;
+    hint.hidden = standalone;
+  }
+
   function init() {
     var dropzone = $('dropzone');
+    showInstallHint();
 
     ['dragenter', 'dragover'].forEach(function (type) {
       dropzone.addEventListener(type, function (event) {

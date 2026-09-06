@@ -2,10 +2,20 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Camera Stats — 写真の撮影データ可視化</title>
   <meta name="description" content="手元の写真の EXIF（カメラ・レンズ・F値・焦点距離・ISO）をブラウザだけで集計して可視化します。画像はアップロードされません。">
   <link rel="stylesheet" href="css/app.css">
+
+  <!-- ホーム画面に追加してアプリのように使うための設定 -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Camera Stats">
+  <meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e1116" media="(prefers-color-scheme: dark)">
 </head>
 <body>
   <header class="site-header">
@@ -18,14 +28,19 @@
   <main class="wrap">
     <section class="panel loader">
       <div id="dropzone" class="dropzone">
-        <p class="dropzone-title">ここに写真をドラッグ &amp; ドロップ</p>
+        <p class="dropzone-title">
+          <span class="only-pointer">ここに写真をドラッグ &amp; ドロップ</span>
+          <span class="only-touch">写真を選んで撮影データを集計</span>
+        </p>
         <p class="dropzone-note">JPEG / HEIC / RAW（ARW・NEF・CR2・CR3・DNG など）に対応。<strong>画像はブラウザ内だけで処理され、送信されません。</strong></p>
         <div class="actions">
           <label class="btn btn-primary">
             写真を選ぶ
-            <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden>
+            <input type="file" id="fileInput"
+                   accept="image/*,.heic,.heif,.dng,.arw,.sr2,.cr2,.cr3,.nef,.nrw,.raf,.orf,.rw2,.pef,.srw"
+                   multiple hidden>
           </label>
-          <label class="btn">
+          <label class="btn only-pointer">
             フォルダごと選ぶ
             <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
           </label>
@@ -62,6 +77,12 @@
       <p class="fineprint">
         Instagram の「データをダウンロード」で取得した JSON も読み込めます。ただし取り出せるのは投稿日時と、
         キャプションに書かれた機材表記（<code>35mm F1.8</code> など）の推定値までです。
+      </p>
+      <p class="fineprint install-hint" id="installHint" hidden>
+        <strong>スマホでアプリのように使えます。</strong>
+        iPhone は Safari で <strong>[共有] → [ホーム画面に追加]</strong>、
+        Android は Chrome のメニューから <strong>[アプリをインストール]</strong>。
+        ホーム画面のアイコンから全画面で起動し、オフラインでも動きます。
       </p>
       <p class="fineprint">
         RAW（.ARW / .NEF / .CR2 / .CR3 / .DNG / .ORF / .RW2 / .RAF など）と HEIC にも対応しています。
@@ -224,5 +245,13 @@
   <script src="js/instagram.js"></script>
   <script src="js/card.js"></script>
   <script src="js/app.js"></script>
+  <script>
+    // オフラインで動かすためのサービスワーカー（対応していない環境では何もしない）
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js').catch(function () {});
+      });
+    }
+  </script>
 </body>
 </html>
