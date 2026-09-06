@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Camera Stats — 写真の撮影データ可視化</title>
+  <meta name="description" content="手元の写真の EXIF（カメラ・レンズ・F値・焦点距離・ISO）をブラウザだけで集計して可視化します。画像はアップロードされません。">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap">
+      <h1>Camera Stats</h1>
+      <p class="tagline">Instagram に上げている写真の「機材・F値・焦点距離」を可視化する</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="panel loader">
+      <div id="dropzone" class="dropzone">
+        <p class="dropzone-title">ここに写真をドラッグ &amp; ドロップ</p>
+        <p class="dropzone-note">JPEG / HEIC / TIFF など。<strong>画像はブラウザ内だけで処理され、送信されません。</strong></p>
+        <div class="actions">
+          <label class="btn btn-primary">
+            写真を選ぶ
+            <input type="file" id="fileInput" accept="image/*,.heic,.heif" multiple hidden>
+          </label>
+          <label class="btn">
+            フォルダごと選ぶ
+            <input type="file" id="folderInput" webkitdirectory directory multiple hidden>
+          </label>
+          <label class="btn">
+            Instagram の JSON
+            <input type="file" id="jsonInput" accept=".json,application/json" hidden>
+          </label>
+          <button type="button" class="btn btn-ghost" id="sampleBtn">サンプルで試す</button>
+          <button type="button" class="btn btn-ghost" id="clearBtn">クリア</button>
+        </div>
+      </div>
+
+      <div class="progress" id="progress" hidden>
+        <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+        <p class="progress-text" id="progressText"></p>
+      </div>
+
+      <p class="alert" id="errorBox" hidden></p>
+    </section>
+
+    <section class="panel intro" id="intro">
+      <h2>まず知っておいてほしいこと</h2>
+      <p class="lead">
+        <strong>Instagram に投稿された写真からは、カメラ・レンズ・F値を取り出せません。</strong>
+        Instagram はアップロード時に EXIF（撮影情報）を削除しますし、公式 API も返しません。
+        そのため、このアプリは<strong>Instagram に上げる前のオリジナル写真</strong>を読み込んで集計します。
+        投稿している写真をそのまま選べば、あなたの「Instagram の作風」がそのまま数字になります。
+      </p>
+      <ol class="steps">
+        <li><strong>写真を集める</strong> — Instagram に投稿した元データ（カメラから取り込んだファイル）をフォルダにまとめます。</li>
+        <li><strong>読み込む</strong> — 上のエリアにドロップするか「フォルダごと選ぶ」で一括読み込み。</li>
+        <li><strong>眺める</strong> — 機材・F値・焦点距離・ISO・撮影時間帯が自動で集計されます。グラフをクリックすると絞り込めます。</li>
+      </ol>
+      <p class="fineprint">
+        Instagram の「データをダウンロード」で取得した JSON も読み込めます。ただし取り出せるのは投稿日時と、
+        キャプションに書かれた機材表記（<code>35mm F1.8</code> など）の推定値までです。
+      </p>
+      <p class="fineprint">
+        RAW（.ARW / .CR3 など）や HEIC はブラウザによって読めない場合があります。読めなかった枚数は結果画面に表示されます。
+      </p>
+    </section>
+
+    <div id="results" hidden>
+      <div id="filterBar" class="filter-bar" hidden></div>
+
+      <section class="stats" id="summary"></section>
+
+      <p class="alert alert-info" id="noExifNote" hidden></p>
+
+      <div class="grid">
+        <section class="panel card">
+          <h2>カメラボディ</h2>
+          <p class="card-note">クリックでそのカメラだけに絞り込み</p>
+          <div id="chartCamera"></div>
+        </section>
+
+        <section class="panel card">
+          <h2>レンズ</h2>
+          <p class="card-note">クリックでそのレンズだけに絞り込み</p>
+          <div id="chartLens"></div>
+        </section>
+
+        <section class="panel card card-wide">
+          <h2>焦点距離</h2>
+          <label class="toggle">
+            <input type="checkbox" id="focalToggle">
+            <span>35mm換算で見る</span>
+          </label>
+          <div id="chartFocal"></div>
+        </section>
+
+        <section class="panel card">
+          <h2>F値（絞り）</h2>
+          <p class="card-note">数字が小さいほど背景がボケる設定</p>
+          <div id="chartAperture"></div>
+        </section>
+
+        <section class="panel card">
+          <h2>ISO 感度</h2>
+          <div id="chartIso"></div>
+        </section>
+
+        <section class="panel card">
+          <h2>シャッター速度</h2>
+          <div id="chartShutter"></div>
+        </section>
+
+        <section class="panel card card-wide">
+          <h2>撮影した時間帯</h2>
+          <p class="card-note">0〜23時。golden hour に寄っているかが分かります</p>
+          <div id="chartHour"></div>
+        </section>
+
+        <section class="panel card card-wide">
+          <h2>月ごとの撮影枚数</h2>
+          <div id="chartMonth"></div>
+        </section>
+      </div>
+
+      <section class="panel card card-wide">
+        <div class="table-head">
+          <h2>写真一覧 <span class="count" id="tableCount"></span></h2>
+          <button type="button" class="btn btn-ghost" id="csvBtn">CSV でダウンロード</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th></th>
+                <th data-sort="name">ファイル名</th>
+                <th data-sort="camera">カメラ</th>
+                <th data-sort="lens">レンズ</th>
+                <th data-sort="focalLength">焦点距離</th>
+                <th data-sort="fNumber">F値</th>
+                <th data-sort="exposureTime">SS</th>
+                <th data-sort="iso">ISO</th>
+                <th data-sort="dateTime">撮影日時</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>すべての処理はブラウザ内で完結します。写真もデータも外部に送信されません。</p>
+    </div>
+  </footer>
+
+  <script src="js/exif.js"></script>
+  <script src="js/charts.js"></script>
+  <script src="js/instagram.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
