@@ -659,3 +659,28 @@ body.is-locked { overflow: hidden; }
   .modal-body { grid-template-columns: 1fr; }
   #cardCanvas { max-height: 44vh; }
 }
+
+/* カードに載せる項目の選択 */
+
+.items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.item-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+
+.item-group-label {
+  flex: 0 0 100%;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.items .toggle { margin-bottom: 0; }
+.items .toggle.is-empty { opacity: 0.45; }

@@ -38,7 +38,8 @@
   var TAG_LENS_MAKE = 0xa433;
   var TAG_LENS_MODEL = 0xa434;
 
-  // IFD1 (サムネイル)
+  // IFD1 / SubIFD (サムネイル・プレビュー)
+  var TAG_SUB_IFD = 0x014a;
   var TAG_THUMB_OFFSET = 0x0201;
   var TAG_THUMB_LENGTH = 0x0202;
 
@@ -56,6 +57,31 @@
       out += String.fromCharCode(c);
     }
     return out;
+  }
+
+  // 42 は標準 TIFF。ORF は 'OR'/'SR'、RW2 は 85 を使う
+  var TIFF_MAGICS = [42, 0x4f52, 0x5352, 85];
+
+  /* 指定位置が TIFF ヘッダなら little endian かどうかを返す（違えば null） */
+  function tiffEndian(view, offset) {
+    if (offset < 0 || offset + 8 > view.byteLength) return null;
+    var order = view.getUint16(offset);
+    if (order !== 0x4949 && order !== 0x4d4d) return null;
+    var little = order === 0x4949;
+    var magic = view.getUint16(offset + 2, little);
+    return TIFF_MAGICS.indexOf(magic) >= 0 ? little : null;
+  }
+
+  /* Canon CR3 は ISO-BMFF で、EXIF が CMT1 ボックスに TIFF のまま入っている */
+  function findCr3Tiff(buffer, view) {
+    var bytes = new Uint8Array(buffer);
+    var limit = Math.min(bytes.length - 12, 1024 * 1024);
+    for (var i = 0; i < limit; i++) {
+      if (bytes[i] === 0x43 && bytes[i + 1] === 0x4d && bytes[i + 2] === 0x54 && bytes[i + 3] === 0x31) {
+        if (tiffEndian(view, i + 4) !== null) return i + 4;
+      }
+    }
+    return -1;
   }
 
   /* JPEG のマーカーを辿って APP1(Exif) の TIFF 先頭オフセットを返す */
@@ -146,18 +172,15 @@
       var tag = view.getUint16(entry, little);
       var value = readValue(view, entry, tiffStart, little);
       if (value === null || value === '') continue;
-      if (tag === TAG_EXIF_IFD || tag === TAG_GPS_IFD) pointers[tag] = value;
+      if (tag === TAG_EXIF_IFD || tag === TAG_GPS_IFD || tag === TAG_SUB_IFD) pointers[tag] = value;
       tags[tag] = value;
     }
     return pointers;
   }
 
   function parseTiff(view, tiffStart) {
-    if (tiffStart + 8 > view.byteLength) return null;
-    var order = view.getUint16(tiffStart);
-    if (order !== 0x4949 && order !== 0x4d4d) return null;
-    var little = order === 0x4949;
-    if (view.getUint16(tiffStart + 2, little) !== 42) return null;
+    var little = tiffEndian(view, tiffStart);
+    if (little === null) return null;
 
     var ifd0 = tiffStart + view.getUint32(tiffStart + 4, little);
     var tags = {};
@@ -171,18 +194,38 @@
       readIfd(view, tiffStart + pointers[TAG_GPS_IFD], tiffStart, little, gps);
     }
 
-    // IFD1 に埋め込みサムネイル(JPEG)があれば位置を控える。
-    // ブラウザが表示できない形式(HEIC など)でも、これがあれば画を出せる。
-    var thumb = null;
+    // 埋め込み JPEG（IFD1 のサムネイル、RAW の SubIFD プレビュー）の位置を集める。
+    // ブラウザが表示できない形式でも、これがあれば画を出せる。
+    var previews = [];
+    function consider(ifdTags) {
+      var offset = first(ifdTags[TAG_THUMB_OFFSET]);
+      var length = first(ifdTags[TAG_THUMB_LENGTH]);
+      if (offset && length && length > 0) {
+        previews.push({ start: tiffStart + offset, length: length });
+      }
+    }
+
     if (pointers.next) {
       var ifd1 = {};
       readIfd(view, tiffStart + pointers.next, tiffStart, little, ifd1);
-      var offset = first(ifd1[TAG_THUMB_OFFSET]);
-      var length = first(ifd1[TAG_THUMB_LENGTH]);
-      if (offset && length && length > 0) {
-        thumb = { start: tiffStart + offset, length: length };
-      }
+      consider(ifd1);
     }
+
+    var subIfds = pointers[TAG_SUB_IFD];
+    if (subIfds != null) {
+      (Array.isArray(subIfds) ? subIfds : [subIfds]).slice(0, 8).forEach(function (offset) {
+        var subTags = {};
+        readIfd(view, tiffStart + offset, tiffStart, little, subTags);
+        consider(subTags);
+      });
+    }
+
+    // 画質優先で最大のものを選ぶ。極端に大きいものはメモリを圧迫するため除外する。
+    var thumb = null;
+    previews.forEach(function (candidate) {
+      if (candidate.length > 12 * 1024 * 1024) return;
+      if (!thumb || candidate.length > thumb.length) thumb = candidate;
+    });
 
     return { tags: tags, gps: gps, thumb: thumb };
   }
@@ -263,6 +306,9 @@
   function parseBuffer(buffer) {
     var view = new DataView(buffer);
     var start = findExifInJpeg(view);
+    // ARW / NEF / CR2 / DNG / ORF / RW2 などの RAW はファイル先頭が TIFF ヘッダ
+    if (start < 0 && tiffEndian(view, 0) !== null) start = 0;
+    if (start < 0) start = findCr3Tiff(buffer, view);
     if (start < 0) start = findExifAnywhere(buffer);
     if (start < 0) return null;
 
@@ -307,32 +353,62 @@
       orientation: num(t[TAG_ORIENTATION]),
       dateTime: parseExifDate(t[TAG_DATETIME_ORIGINAL]) || parseExifDate(t[TAG_DATETIME]),
       hasGps: !!(parsed.gps[TAG_GPS_LAT] && parsed.gps[TAG_GPS_LON]),
+      thumb: parsed.thumb,
       thumbnail: extractThumbnail(buffer, parsed.thumb)
     };
   }
 
-  /* File を読み込んで EXIF を返す。先頭 2MB で足りなければ全体を読み直す。 */
+  var FIRST_PASS = 2 * 1024 * 1024;
+  var SECOND_PASS = 16 * 1024 * 1024;
+
+  /*
+   * File を読み込んで EXIF を返す。
+   * RAW は数十MBあるため全体は読まず、先頭だけを読む。埋め込みプレビューの実体は
+   * 位置が分かってから必要な範囲だけを読み出す（app.js が必要に応じて使う）。
+   */
   function parseFile(file) {
-    return readSlice(file, Math.min(file.size, 2 * 1024 * 1024))
+    return readRange(file, 0, Math.min(file.size, FIRST_PASS))
       .then(function (buffer) {
         var result = parseBuffer(buffer);
-        if (result || file.size <= 2 * 1024 * 1024) return result;
-        return readSlice(file, file.size).then(parseBuffer);
+        if (result || file.size <= FIRST_PASS) return result;
+        return readRange(file, 0, Math.min(file.size, SECOND_PASS)).then(parseBuffer);
+      })
+      .then(function (result) {
+        if (!result || !result.thumb || result.thumbnail) return result;
+        // プレビューが先頭スライスの外にある場合は、その範囲だけ読み直す
+        return readThumbnail(file, result.thumb).then(function (bytes) {
+          result.thumbnail = bytes;
+          return result;
+        });
       });
   }
 
-  function readSlice(file, bytes) {
+  /* 埋め込み JPEG を範囲指定で読み出す。JPEG でなければ捨てる。 */
+  function readThumbnail(file, thumb) {
+    if (!thumb || thumb.start < 0 || thumb.start + thumb.length > file.size) {
+      return Promise.resolve(null);
+    }
+    return readRange(file, thumb.start, thumb.length)
+      .then(function (buffer) {
+        var bytes = new Uint8Array(buffer);
+        return (bytes[0] === 0xff && bytes[1] === 0xd8) ? bytes : null;
+      })
+      .catch(function () { return null; });
+  }
+
+  function readRange(file, start, length) {
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
       reader.onload = function () { resolve(reader.result); };
       reader.onerror = function () { reject(reader.error || new Error('read failed')); };
-      reader.readAsArrayBuffer(file.slice(0, bytes));
+      reader.readAsArrayBuffer(file.slice(start, start + length));
     });
   }
 
   global.ExifReader = {
     parseFile: parseFile,
     parseBuffer: parseBuffer,
+    readThumbnail: readThumbnail,
     buildCamera: buildCamera
   };
 })(window);

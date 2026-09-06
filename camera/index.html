@@ -19,7 +19,7 @@
     <section class="panel loader">
       <div id="dropzone" class="dropzone">
         <p class="dropzone-title">ここに写真をドラッグ &amp; ドロップ</p>
-        <p class="dropzone-note">JPEG / HEIC / TIFF など。<strong>画像はブラウザ内だけで処理され、送信されません。</strong></p>
+        <p class="dropzone-note">JPEG / HEIC / RAW（ARW・NEF・CR2・CR3・DNG など）に対応。<strong>画像はブラウザ内だけで処理され、送信されません。</strong></p>
         <div class="actions">
           <label class="btn btn-primary">
             写真を選ぶ
@@ -64,7 +64,8 @@
         キャプションに書かれた機材表記（<code>35mm F1.8</code> など）の推定値までです。
       </p>
       <p class="fineprint">
-        RAW（.ARW / .CR3 など）や HEIC はブラウザによって読めない場合があります。読めなかった枚数は結果画面に表示されます。
+        RAW（.ARW / .NEF / .CR2 / .CR3 / .DNG / .ORF / .RW2 / .RAF など）と HEIC にも対応しています。
+        画像そのものの表示には、RAW に埋め込まれたプレビューを使います。読み取れなかった枚数は結果画面に表示されます。
       </p>
     </section>
 
@@ -203,13 +204,12 @@
 
           <div class="control">
             <span class="control-label">載せる情報</span>
-            <label class="toggle"><input type="checkbox" id="cardShowLens" checked><span>レンズ名</span></label>
-            <label class="toggle"><input type="checkbox" id="cardShowDate" checked><span>撮影日</span></label>
+            <div class="items" id="cardItems"></div>
           </div>
 
           <p class="alert alert-info" id="cardNote" hidden>
-            この写真はブラウザが表示できない形式のため、EXIF に埋め込まれた小さなサムネイルを使っています。
-            カードの画質は粗くなります。
+            この写真はブラウザが直接表示できない形式のため、埋め込みプレビューを使っています。
+            元の写真より解像度が低いので、カードの画質は粗くなります。
           </p>
 
           <button type="button" class="btn btn-primary" id="cardDownload">PNG でダウンロード</button>
