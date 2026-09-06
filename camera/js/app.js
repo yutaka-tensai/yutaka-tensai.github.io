@@ -316,6 +316,7 @@
       name: record.name,
       fields: {
         camera: record.camera || '',
+        model: record.model || '',
         lens: record.lens || '',
         fileName: record.name,
         focal: record.focalLength ? formatFocal(record.focalLength) : '',
