@@ -65,7 +65,9 @@
     return ITEMS.filter(function (item) {
       return item.group === group && state.show[item.key] && fields[item.key];
     }).map(function (item) {
-      return item.key === 'lens' ? lensLabel(fields[item.key]) : fields[item.key];
+      return item.key === 'lens'
+        ? stripCameraPrefix(lensLabel(fields[item.key]))
+        : fields[item.key];
     }).filter(Boolean);
   }
 
@@ -99,6 +101,27 @@
     if (!dropFocal && focal) trimmed += ' ' + focal;   // F値だけ消す
     if (!dropAperture) trimmed += ' F' + match[2];     // 焦点距離だけ消す
     return trimmed.trim();
+  }
+
+  /*
+   * "Apple iPhone 15 Pro" の下に "iPhone 15 Pro back camera" と並ぶと機種名が重複する。
+   * カメラ名を表示しているときだけ、レンズ名の先頭から機種名を取り除いて
+   * "back camera" のようにする。
+   */
+  function stripCameraPrefix(lens) {
+    if (!state.show.camera) return lens;
+    var fields = (state.data && state.data.fields) || {};
+    var candidates = [fields.camera, fields.model].filter(Boolean)
+      .sort(function (a, b) { return b.length - a.length; });
+
+    for (var i = 0; i < candidates.length; i++) {
+      var prefix = candidates[i];
+      if (lens.length <= prefix.length) continue;
+      if (lens.slice(0, prefix.length).toLowerCase() !== prefix.toLowerCase()) continue;
+      var rest = lens.slice(prefix.length).replace(/^[\s:\-—]+/, '').trim();
+      if (rest.length >= 3) return rest;
+    }
+    return lens;
   }
 
   var el = {};
@@ -449,5 +472,8 @@
     init();
   }
 
-  global.PhotoCard = { open: open, lensLabel: lensLabel };
+  global.PhotoCard = {
+    open: open,
+    lensLabel: function (lens) { return stripCameraPrefix(lensLabel(lens)); }
+  };
 })(window);
