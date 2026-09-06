@@ -1,0 +1,17 @@
+{
+  "name": "Camera Stats — 写真の撮影データ可視化",
+  "short_name": "Camera Stats",
+  "description": "手元の写真の EXIF（カメラ・レンズ・F値・焦点距離・ISO）を集計して可視化し、フォトカードを作れます。写真は端末の外に出ません。",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0e1116",
+  "theme_color": "#0e1116",
+  "orientation": "any",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

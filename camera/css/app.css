@@ -239,6 +239,7 @@ code {
 }
 
 .stat {
+  min-width: 0;
   background: var(--bg-elevated);
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -275,7 +276,7 @@ code {
   margin-bottom: 20px;
 }
 
-.grid .panel { margin-bottom: 0; }
+.grid .panel { margin-bottom: 0; min-width: 0; }
 
 .card-wide { grid-column: 1 / -1; }
 
@@ -329,15 +330,19 @@ button.column { cursor: pointer; }
   gap: 12px;
   font-size: 12.5px;
   margin-bottom: 4px;
+  min-width: 0;
 }
 
 .bar-label {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .bar-value {
+  flex: 0 0 auto;
   color: var(--text-dim);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -356,7 +361,13 @@ button.column { cursor: pointer; }
   border-radius: 999px;
 }
 
-.bar-sub { font-size: 11.5px; color: var(--text-dim); }
+.bar-sub {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* -------------------------------------------------------------------- 縦棒 */
 
@@ -567,12 +578,13 @@ body.is-locked { overflow: hidden; }
 
 .modal-body {
   display: grid;
-  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
   gap: 24px;
   align-items: start;
 }
 
 .card-preview {
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -656,7 +668,7 @@ body.is-locked { overflow: hidden; }
 .modal .btn-primary { align-self: flex-start; }
 
 @media (max-width: 800px) {
-  .modal-body { grid-template-columns: 1fr; }
+  .modal-body { grid-template-columns: minmax(0, 1fr); }
   #cardCanvas { max-height: 44vh; }
 }
 
@@ -684,3 +696,33 @@ body.is-locked { overflow: hidden; }
 
 .items .toggle { margin-bottom: 0; }
 .items .toggle.is-empty { opacity: 0.45; }
+
+/* ホーム画面アプリとして起動したときの表示調整 */
+
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+.site-footer { padding-bottom: calc(18px + env(safe-area-inset-bottom)); }
+
+.install-hint {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--bg-input);
+}
+
+@media (display-mode: standalone) {
+  /* アプリとして起動したときは、ブラウザで見る前提の文言を控えめにする */
+  .site-header { padding-top: calc(18px + env(safe-area-inset-top)); }
+}
+
+/* タッチ端末ではドラッグ&ドロップができないため、文言を差し替える */
+
+.only-touch { display: none; }
+
+@media (hover: none) and (pointer: coarse) {
+  .only-pointer { display: none !important; }
+  .only-touch { display: inline; }
+}
