@@ -328,11 +328,23 @@
       var thumbCell = document.createElement('td');
       thumbCell.className = 'cell-thumb';
       if (record.thumbUrl && index < MAX_THUMBS) {
+        var link = document.createElement('a');
+        link.href = record.thumbUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.title = 'クリックで拡大';
         var img = document.createElement('img');
         img.src = record.thumbUrl;
         img.alt = '';
         img.loading = 'lazy';
-        thumbCell.appendChild(img);
+        link.appendChild(img);
+        thumbCell.appendChild(link);
+      } else if (record.noPreview) {
+        var badge = document.createElement('span');
+        badge.className = 'thumb-none';
+        badge.textContent = record.ext || '?';
+        badge.title = 'この形式はブラウザで表示できません（撮影データは読み取れています）';
+        thumbCell.appendChild(badge);
       }
       tr.appendChild(thumbCell);
 
@@ -384,6 +396,33 @@
     } else {
       note.hidden = true;
     }
+
+    renderPreviewNote();
+  }
+
+  /* HEIC などブラウザが表示できない形式を読み込んだときの案内 */
+  function renderPreviewNote() {
+    var hidden = state.records.filter(function (r) { return r.noPreview; });
+    var note = $('previewNote');
+    if (!hidden.length) { note.hidden = true; return; }
+
+    var exts = {};
+    hidden.forEach(function (r) { if (r.ext) exts[r.ext] = true; });
+    var list = Object.keys(exts).join(' / ') || '一部の形式';
+
+    note.hidden = false;
+    note.innerHTML = '';
+    var line1 = document.createElement('p');
+    line1.textContent = hidden.length + '枚は画像を表示できません（' + list +
+      '）。Chrome や Edge はこれらの形式を表示できないためで、' +
+      'カメラ・レンズ・F値などの撮影データはすべて読み取れています。';
+    var line2 = document.createElement('p');
+    line2.textContent = 'iPhone の写真を表示したい場合は、iPhone の [設定] → [写真] → ' +
+      '[MacまたはPCに転送] を「自動」にすると、パソコンへ取り込むときに JPEG へ変換されます。' +
+      'これから撮る写真は [設定] → [カメラ] → [フォーマット] → 「互換性優先」で JPEG になります。';
+    line2.className = 'note-sub';
+    note.appendChild(line1);
+    note.appendChild(line2);
   }
 
   /* ------------------------------------------------------------ ファイル処理 */
@@ -405,10 +444,23 @@
     }
   }
 
-  function makeThumb(file) {
+  /* ブラウザが <img> で表示できる形式か（Windows では file.type が空のことがある） */
+  function isRenderable(file) {
+    return /^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type) ||
+      /\.(jpe?g|png|webp|gif|avif)$/i.test(file.name);
+  }
+
+  function makeThumb(file, exif) {
     if (state.thumbUrls.length >= MAX_THUMBS) return null;
-    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) return null;
-    var url = URL.createObjectURL(file);
+    var blob = null;
+    if (isRenderable(file)) {
+      blob = file;
+    } else if (exif && exif.thumbnail) {
+      // HEIC や RAW でも、EXIF に JPEG サムネイルが入っていれば表示できる
+      blob = new Blob([exif.thumbnail], { type: 'image/jpeg' });
+    }
+    if (!blob) return null;
+    var url = URL.createObjectURL(blob);
     state.thumbUrls.push(url);
     return url;
   }
@@ -452,7 +504,10 @@
             }, exif || {});
             record.hasExif = !!(exif && (exif.camera || exif.fNumber || exif.focalLength || exif.iso));
             if (!record.dateTime && file.lastModified) record.dateTime = new Date(file.lastModified);
-            record.thumbUrl = makeThumb(file);
+            record.ext = (file.name.split('.').pop() || '').toUpperCase().slice(0, 5);
+            record.thumbUrl = makeThumb(file, exif);
+            record.thumbnail = null; // バイト列は URL 化したので保持しない
+            record.noPreview = !record.thumbUrl;
             state.records.push(record);
             done++;
             setProgress(done, files.length);
