@@ -38,6 +38,10 @@
   var TAG_LENS_MAKE = 0xa433;
   var TAG_LENS_MODEL = 0xa434;
 
+  // IFD1 (サムネイル)
+  var TAG_THUMB_OFFSET = 0x0201;
+  var TAG_THUMB_LENGTH = 0x0202;
+
   // GPS IFD
   var TAG_GPS_LAT = 0x0002;
   var TAG_GPS_LON = 0x0004;
@@ -134,6 +138,8 @@
     var count = view.getUint16(ifdOffset, little);
     if (count > 512) return {};
     var pointers = {};
+    var nextOffset = ifdOffset + 2 + count * 12;
+    pointers.next = nextOffset + 4 <= view.byteLength ? view.getUint32(nextOffset, little) : 0;
     for (var i = 0; i < count; i++) {
       var entry = ifdOffset + 2 + i * 12;
       if (entry + 12 > view.byteLength) break;
@@ -164,7 +170,21 @@
     if (pointers[TAG_GPS_IFD]) {
       readIfd(view, tiffStart + pointers[TAG_GPS_IFD], tiffStart, little, gps);
     }
-    return { tags: tags, gps: gps };
+
+    // IFD1 に埋め込みサムネイル(JPEG)があれば位置を控える。
+    // ブラウザが表示できない形式(HEIC など)でも、これがあれば画を出せる。
+    var thumb = null;
+    if (pointers.next) {
+      var ifd1 = {};
+      readIfd(view, tiffStart + pointers.next, tiffStart, little, ifd1);
+      var offset = first(ifd1[TAG_THUMB_OFFSET]);
+      var length = first(ifd1[TAG_THUMB_LENGTH]);
+      if (offset && length && length > 0) {
+        thumb = { start: tiffStart + offset, length: length };
+      }
+    }
+
+    return { tags: tags, gps: gps, thumb: thumb };
   }
 
   function first(value) {
@@ -231,6 +251,15 @@
   };
 
   /* ArrayBuffer から EXIF を抽出して正規化済みオブジェクトを返す */
+  /* IFD1 のサムネイルを Uint8Array で切り出す（JPEG でなければ捨てる） */
+  function extractThumbnail(buffer, thumb) {
+    if (!thumb) return null;
+    if (thumb.start < 0 || thumb.start + thumb.length > buffer.byteLength) return null;
+    var bytes = new Uint8Array(buffer, thumb.start, thumb.length);
+    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+    return bytes.slice();
+  }
+
   function parseBuffer(buffer) {
     var view = new DataView(buffer);
     var start = findExifInJpeg(view);
@@ -277,7 +306,8 @@
       height: num(t[TAG_PIXEL_Y]),
       orientation: num(t[TAG_ORIENTATION]),
       dateTime: parseExifDate(t[TAG_DATETIME_ORIGINAL]) || parseExifDate(t[TAG_DATETIME]),
-      hasGps: !!(parsed.gps[TAG_GPS_LAT] && parsed.gps[TAG_GPS_LON])
+      hasGps: !!(parsed.gps[TAG_GPS_LAT] && parsed.gps[TAG_GPS_LON]),
+      thumbnail: extractThumbnail(buffer, parsed.thumb)
     };
   }
 

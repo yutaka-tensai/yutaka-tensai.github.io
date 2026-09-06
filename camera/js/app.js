@@ -2,7 +2,7 @@
  * app.js - 写真の EXIF を集計してダッシュボードを描画する
  * 画像はすべてブラウザ内で処理し、どこにも送信しない。
  */
-(function () {
+(function (global) {
   'use strict';
 
   var IMAGE_RE = /\.(jpe?g|tiff?|heic|heif|webp|png|dng|arw|cr2|cr3|nef|raf|orf|rw2)$/i;
@@ -295,6 +295,29 @@
     Charts.columns($('chartMonth'), monthItems(records), { emptyText: '撮影日時の記録がありません', dense: true });
   }
 
+  /* フォトカードに渡す表示用データを作る */
+  function cardDataFor(record) {
+    var specs = [];
+    if (focalOf(record)) specs.push(formatFocal(focalOf(record)));
+    if (record.fNumber) specs.push(formatF(record.fNumber));
+    if (record.exposureTime) {
+      // カードでは 1/125s / 2.5s のように単位まで入れて読みやすくする
+      specs.push(record.exposureTime >= 1
+        ? (Math.round(record.exposureTime * 10) / 10) + 's'
+        : '1/' + Math.round(1 / record.exposureTime) + 's');
+    }
+    if (record.iso) specs.push('ISO ' + record.iso);
+    return {
+      name: record.name,
+      imageUrl: record.thumbUrl,
+      camera: record.camera,
+      lens: record.lens,
+      specs: specs,
+      dateText: record.dateTime ? formatDate(record.dateTime).slice(0, 10) : '',
+      lowRes: !!record.lowRes
+    };
+  }
+
   var SORT_ACCESSORS = {
     name: function (r) { return r.name.toLowerCase(); },
     camera: function (r) { return (r.camera || '').toLowerCase(); },
@@ -328,11 +351,25 @@
       var thumbCell = document.createElement('td');
       thumbCell.className = 'cell-thumb';
       if (record.thumbUrl && index < MAX_THUMBS) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'thumb-btn';
+        button.title = 'クリックでフォトカードを作成';
         var img = document.createElement('img');
         img.src = record.thumbUrl;
         img.alt = '';
         img.loading = 'lazy';
-        thumbCell.appendChild(img);
+        button.appendChild(img);
+        button.addEventListener('click', function () {
+          if (global.PhotoCard) global.PhotoCard.open(cardDataFor(record));
+        });
+        thumbCell.appendChild(button);
+      } else if (record.noPreview) {
+        var badge = document.createElement('span');
+        badge.className = 'thumb-none';
+        badge.textContent = record.ext || '?';
+        badge.title = 'この形式はブラウザで表示できません（撮影データは読み取れています）';
+        thumbCell.appendChild(badge);
       }
       tr.appendChild(thumbCell);
 
@@ -384,6 +421,33 @@
     } else {
       note.hidden = true;
     }
+
+    renderPreviewNote();
+  }
+
+  /* HEIC などブラウザが表示できない形式を読み込んだときの案内 */
+  function renderPreviewNote() {
+    var hidden = state.records.filter(function (r) { return r.noPreview; });
+    var note = $('previewNote');
+    if (!hidden.length) { note.hidden = true; return; }
+
+    var exts = {};
+    hidden.forEach(function (r) { if (r.ext) exts[r.ext] = true; });
+    var list = Object.keys(exts).join(' / ') || '一部の形式';
+
+    note.hidden = false;
+    note.innerHTML = '';
+    var line1 = document.createElement('p');
+    line1.textContent = hidden.length + '枚は画像を表示できません（' + list +
+      '）。Chrome や Edge はこれらの形式を表示できないためで、' +
+      'カメラ・レンズ・F値などの撮影データはすべて読み取れています。';
+    var line2 = document.createElement('p');
+    line2.textContent = 'iPhone の写真を表示したい場合は、iPhone の [設定] → [写真] → ' +
+      '[MacまたはPCに転送] を「自動」にすると、パソコンへ取り込むときに JPEG へ変換されます。' +
+      'これから撮る写真は [設定] → [カメラ] → [フォーマット] → 「互換性優先」で JPEG になります。';
+    line2.className = 'note-sub';
+    note.appendChild(line1);
+    note.appendChild(line2);
   }
 
   /* ------------------------------------------------------------ ファイル処理 */
@@ -405,10 +469,23 @@
     }
   }
 
-  function makeThumb(file) {
+  /* ブラウザが <img> で表示できる形式か（Windows では file.type が空のことがある） */
+  function isRenderable(file) {
+    return /^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type) ||
+      /\.(jpe?g|png|webp|gif|avif)$/i.test(file.name);
+  }
+
+  function makeThumb(file, exif) {
     if (state.thumbUrls.length >= MAX_THUMBS) return null;
-    if (!/^image\/(jpeg|png|webp|gif)$/i.test(file.type)) return null;
-    var url = URL.createObjectURL(file);
+    var blob = null;
+    if (isRenderable(file)) {
+      blob = file;
+    } else if (exif && exif.thumbnail) {
+      // HEIC や RAW でも、EXIF に JPEG サムネイルが入っていれば表示できる
+      blob = new Blob([exif.thumbnail], { type: 'image/jpeg' });
+    }
+    if (!blob) return null;
+    var url = URL.createObjectURL(blob);
     state.thumbUrls.push(url);
     return url;
   }
@@ -452,7 +529,12 @@
             }, exif || {});
             record.hasExif = !!(exif && (exif.camera || exif.fNumber || exif.focalLength || exif.iso));
             if (!record.dateTime && file.lastModified) record.dateTime = new Date(file.lastModified);
-            record.thumbUrl = makeThumb(file);
+            record.ext = (file.name.split('.').pop() || '').toUpperCase().slice(0, 5);
+            record.thumbUrl = makeThumb(file, exif);
+            record.thumbnail = null; // バイト列は URL 化したので保持しない
+            record.noPreview = !record.thumbUrl;
+            // カード作成では元ファイルをそのまま描画する。埋め込みサムネイル頼みのときは低解像度
+            record.lowRes = !!record.thumbUrl && !isRenderable(file);
             state.records.push(record);
             done++;
             setProgress(done, files.length);
@@ -654,4 +736,4 @@
   } else {
     init();
   }
-})();
+})(window);

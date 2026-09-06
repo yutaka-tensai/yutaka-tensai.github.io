@@ -74,6 +74,7 @@
       <section class="stats" id="summary"></section>
 
       <p class="alert alert-info" id="noExifNote" hidden></p>
+      <div class="alert alert-info" id="previewNote" hidden></div>
 
       <div class="grid">
         <section class="panel card">
@@ -127,7 +128,8 @@
 
       <section class="panel card card-wide">
         <div class="table-head">
-          <h2>写真一覧 <span class="count" id="tableCount"></span></h2>
+          <h2>写真一覧 <span class="count" id="tableCount"></span>
+            <span class="count">— サムネイルをクリックするとフォトカードを作れます</span></h2>
           <button type="button" class="btn btn-ghost" id="csvBtn">CSV でダウンロード</button>
         </div>
         <div class="table-wrap">
@@ -158,9 +160,69 @@
     </div>
   </footer>
 
+  <div class="modal" id="cardModal" hidden>
+    <div class="modal-box" role="dialog" aria-label="フォトカードを作る">
+      <div class="modal-head">
+        <h2>フォトカードを作る</h2>
+        <button type="button" class="btn btn-ghost" id="cardClose">閉じる</button>
+      </div>
+
+      <div class="modal-body">
+        <div class="card-preview">
+          <canvas id="cardCanvas"></canvas>
+        </div>
+
+        <div class="card-controls">
+          <div class="control">
+            <span class="control-label">向き</span>
+            <div class="opts" id="cardOrientation"></div>
+          </div>
+
+          <div class="control">
+            <span class="control-label">配色</span>
+            <div class="opts" id="cardTheme"></div>
+          </div>
+
+          <div class="control">
+            <span class="control-label">フォント</span>
+            <div class="opts" id="cardFont"></div>
+          </div>
+
+          <div class="control">
+            <span class="control-label">アクセント色</span>
+            <div class="control-row">
+              <input type="color" id="cardAccent" aria-label="アクセント色">
+              <button type="button" class="btn btn-ghost" id="cardAccentReset">標準に戻す</button>
+            </div>
+          </div>
+
+          <div class="control">
+            <label class="control-label" for="cardTitle">タイトル（任意）</label>
+            <input type="text" id="cardTitle" maxlength="40" placeholder="例: 神楽坂の夕暮れ">
+          </div>
+
+          <div class="control">
+            <span class="control-label">載せる情報</span>
+            <label class="toggle"><input type="checkbox" id="cardShowLens" checked><span>レンズ名</span></label>
+            <label class="toggle"><input type="checkbox" id="cardShowDate" checked><span>撮影日</span></label>
+          </div>
+
+          <p class="alert alert-info" id="cardNote" hidden>
+            この写真はブラウザが表示できない形式のため、EXIF に埋め込まれた小さなサムネイルを使っています。
+            カードの画質は粗くなります。
+          </p>
+
+          <button type="button" class="btn btn-primary" id="cardDownload">PNG でダウンロード</button>
+          <p class="fineprint">元の写真ファイルは書き換えません。新しい画像として保存されます。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script src="js/exif.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/instagram.js"></script>
+  <script src="js/card.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
