@@ -51,3 +51,5 @@ tools: WebSearch, WebFetch, Read, Write, Edit, Glob, Grep, Bash
 
 - レポート本文（Markdown）または保存したファイルのパス
 - 使った情報源の一覧と、未確認の数字があればその一覧
+- **検証用の数字リスト**（記述・値・日付・情報源を1行ずつ）。このあと fact-checker が独立に検証するので、
+  検証しやすい形で渡す。fact-checker から修正が来たら本文を直してから保存・提出する。
